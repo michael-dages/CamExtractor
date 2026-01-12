@@ -32,6 +32,14 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller main.spec
 
+      - name: Rename executable
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          # Removes 'v' prefix if present for the filename
+          $version = $tag.TrimStart('v')
+          Move-Item "dist/main.exe" "dist/pyCamExtractor-$version.exe"
+
       - name: Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
