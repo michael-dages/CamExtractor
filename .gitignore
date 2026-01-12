@@ -1,6 +1,5 @@
 # Jetbrains IDE
 .idea/
-/*.spec
 /build
 /dist
 *.xlsx
