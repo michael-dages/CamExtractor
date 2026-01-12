@@ -46,16 +46,25 @@ class CampointsExcelFile:
                 xl.parse(sheet)
                 df = pd.read_excel(xl, sheet)
                 # Check if the data we're looking for exists
-                self.degrees_index_found = next((i for i, column in enumerate(DEGREES_COLUMN) if column in df), None)
-                self.position_index_found = next((i for i, column in enumerate(POSITION_COLUMN) if column in df), None)
-                print(f"{DEGREES_COLUMN[self.degrees_index_found]} Index: {self.degrees_index_found}")
-                print(f"{POSITION_COLUMN[self.position_index_found]} Index:{self.position_index_found}")
+                degrees_index = next((i for i, column in enumerate(DEGREES_COLUMN) if column in df), None)
+                position_index = next((i for i, column in enumerate(POSITION_COLUMN) if column in df), None)
 
-                if (DEGREES_COLUMN[self.degrees_index_found] in df) and (
-                        POSITION_COLUMN[self.position_index_found] in df):
-                    self.dataframe = df
-                    # Set the file validity to true
-                    file_validity = True
+                # Only proceed if both columns were found
+                if degrees_index is not None and position_index is not None:
+                    print(f"{DEGREES_COLUMN[degrees_index]} Index: {degrees_index}")
+                    print(f"{POSITION_COLUMN[position_index]} Index:{position_index}")
+
+                    if (DEGREES_COLUMN[degrees_index] in df) and (
+                            POSITION_COLUMN[position_index] in df):
+                        # Store the valid indices and dataframe
+                        self.degrees_index_found = degrees_index
+                        self.position_index_found = position_index
+                        self.dataframe = df
+                        # Set the file validity to true and break
+                        file_validity = True
+                        break
+                else:
+                    print(f"  Skipping - required columns not found")
             # Check the file validity to determine the output text
             if file_validity:
                 print(f"{GREEN_TERMINAL_TEXT}Valid{DEFAULT_TERMINAL_TEXT} excel file.  Continuing...")
