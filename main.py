@@ -44,9 +44,10 @@ def remove_null_from_dataframe(pandas_list):
 
 def panda_manipulation(excel_filename):
     """Use the pandas library to retrieve the degrees column and create a list"""
-    # Extract data from the position and degrees column after removing the null values
-    degrees_list = remove_null_from_dataframe(cef.dataframe[DEGREES_COLUMN[cef.degrees_index_found]].tolist())
-    position_list = remove_null_from_dataframe(cef.dataframe[POSITION_COLUMN[cef.position_index_found]].tolist())
+    # Drop rows where either column is NaN so both lists stay the same length
+    clean_df = cef.dataframe[[POSITION_COLUMN[cef.position_index_found], DEGREES_COLUMN[cef.degrees_index_found]]].dropna()
+    position_list = clean_df[POSITION_COLUMN[cef.position_index_found]].tolist()
+    degrees_list = clean_df[DEGREES_COLUMN[cef.degrees_index_found]].tolist()
 
     # Check if it's a rotodex cam
     if len(position_list) <= EXPECTED_ROTODEX_LIST_LENGTH:
