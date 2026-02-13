@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python:*)",
       "Bash(head:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }
