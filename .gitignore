@@ -3,3 +3,4 @@
 /build
 /dist
 *.xlsx
+__pycache__/
