@@ -14,9 +14,12 @@ BLUE_TERMINAL_TEXT = '\033[34m'
 class CampointsExcelFile:
     """Retrieve Excel file and store csv filename in the same path"""
 
-    def __init__(self):
+    def __init__(self, file_path=None):
         # Retrieve filename + UNC
-        self.filename_with_path = askopenfilename(filetypes=[("Excel files", ".xlsx .xls")])
+        if file_path is not None:
+            self.filename_with_path = file_path
+        else:
+            self.filename_with_path = askopenfilename(filetypes=[("Excel files", ".xlsx .xls")])
         # Get the full UNC without the extension
         self.filename_without_extension = os.path.splitext(self.filename_with_path)[0]
         # Filename only, no extension, no path
