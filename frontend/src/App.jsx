@@ -179,8 +179,8 @@ function App() {
                 animate={{ opacity: 1 }}
               >
                 <Upload className="upload-icon" />
-                <h2>Drop Excel files here</h2>
-                <p>Support for batch processing subfolders coming soon</p>
+                <h2>Drop Excel files or Zip archives here</h2>
+                <p>Drag and drop multiple files or a .zip archive for batch processing</p>
               </motion.div>
             )}
           </AnimatePresence>
