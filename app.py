@@ -5,16 +5,14 @@ import base64
 import pandas as pd
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
-from main import process_single_file, export_csv, export_xlsx, CAMPOINTS_COLUMN
+from main import process_single_file, CAMPOINTS_COLUMN
 from campoints_excel_file import CampointsExcelFile
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
 # Configuration
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# UPLOAD_FOLDER no longer strictly needed if doing in-memory, but good for temp if needed
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -30,19 +28,58 @@ def health():
 
 @app.route('/process', methods=['POST'])
 def process_files():
-    if 'files' not in request.files:
+    if 'files' in request.files:
+        # Legacy/Multiple file upload handling (if needed) or single zip
+        files = request.files.getlist('files')
+    elif 'file' in request.files:
+        files = [request.files['file']]
+    else:
         return jsonify({"error": "No files provided"}), 400
+
+    # Check if we have a single zip file to process
+    if len(files) == 1 and files[0].filename.lower().endswith('.zip'):
+        # Output zip buffer
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as output_zip:
+            file = files[0]
+            try:
+                with zipfile.ZipFile(file) as input_zip:
+                    for item in input_zip.infolist():
+                        # Skip directories and hidden/OS files
+                        if item.is_dir() or item.filename.startswith('__MACOSX') or item.filename.startswith('.'):
+                            continue
+                        
+                        if item.filename.lower().endswith(('.xlsx', '.xls')):
+                            # Read file from zip
+                            with input_zip.open(item) as extracted_file:
+                                file_bytes = extracted_file.read()
+                                file_stream = io.BytesIO(file_bytes)
+                                
+                                # Process
+                                process_and_add_to_zip(file_stream, item.filename, output_zip)
+            except zipfile.BadZipFile:
+                 return jsonify({"error": "Invalid zip file"}), 400
+
+        zip_buffer.seek(0)
+        return send_file(
+            zip_buffer,
+            mimetype='application/zip',
+            as_attachment=True,
+            download_name='processed_cams.zip'
+        )
     
-    files = request.files.getlist('files')
+    # Standard processing for Excel files (returns JSON)
     results = []
     
-    # We'll store processed files in memory for a zip if needed
-    processed_files_memory = []
-
     for file in files:
         if not file.filename:
             continue
             
+        # Skip if not excel (though we might want to check extension)
+        if not file.filename.lower().endswith(('.xlsx', '.xls')):
+            continue
+
         file_bytes = file.read()
         file_stream = io.BytesIO(file_bytes)
         
@@ -91,14 +128,32 @@ def process_files():
 
     return jsonify({"results": results})
 
-@app.route('/download-zip', methods=['POST'])
-def download_zip():
-    # This would ideally be more robust, but for a session-based approach:
-    # We expect the frontend to send the results they want to zip or we store them.
-    # For now, let's just implement a simple zip creator.
-    data = request.json
-    # ... logic to recreate zip based on processed data ...
-    return jsonify({"message": "Not implemented in prototype, but planned."})
+def process_and_add_to_zip(file_stream, original_filename, output_zip):
+    try:
+        # Create handler
+        cef = CampointsExcelFile(file_stream=file_stream, original_filename=original_filename)
+        
+        # Process headlessly
+        result = process_single_file(cef, show_graph=False, show_table=False, headless=True)
+        
+        if result:
+            # Prepare base filename (strip extension)
+            base_name = os.path.splitext(original_filename)[0]
+            
+            # 1. Add CSV
+            CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
+            df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
+            csv_content = df_csv.to_csv(index=False)
+            output_zip.writestr(f"{base_name}.csv", csv_content)
+            
+            # 2. Add XLSX
+            xlsx_buf = io.BytesIO()
+            df_xlsx = pd.DataFrame(result['data'])
+            df_xlsx.to_excel(xlsx_buf, index=False)
+            output_zip.writestr(f"{base_name}_processed.xlsx", xlsx_buf.getvalue())
+            
+    except Exception as e:
+        print(f"Failed to process {original_filename}: {e}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
