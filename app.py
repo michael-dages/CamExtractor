@@ -11,6 +11,13 @@ from campoints_excel_file import CampointsExcelFile
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
+# Wire up logging to Gunicorn if available
+if __name__ != '__main__':
+    import logging
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+
 # Configuration
 # UPLOAD_FOLDER no longer strictly needed if doing in-memory, but good for temp if needed
 
@@ -28,23 +35,30 @@ def health():
 
 @app.route('/process', methods=['POST'])
 def process_files():
-    if 'files' in request.files:
-        # Legacy/Multiple file upload handling (if needed) or single zip
-        files = request.files.getlist('files')
-    elif 'file' in request.files:
-        files = [request.files['file']]
-    else:
+    # Retrieve files from both 'files' (legacy/multi) and 'file' (single) fields
+    files_list = request.files.getlist('files') + request.files.getlist('file')
+    
+    if not files_list:
         return jsonify({"error": "No files provided"}), 400
 
-    # Check if we have a single zip file to process
-    if len(files) == 1 and files[0].filename.lower().endswith('.zip'):
+    # Relaxed detection: Check if the first file is a zip, ignoring length check
+    # taking into account some browsers might send empty fields or multiple files where one is the zip
+    is_zip = False
+    zip_file = None
+    
+    for f in files_list:
+        if f.filename and f.filename.lower().endswith('.zip'):
+            is_zip = True
+            zip_file = f
+            break
+
+    if is_zip and zip_file:
         # Output zip buffer
         zip_buffer = io.BytesIO()
         
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as output_zip:
-            file = files[0]
             try:
-                with zipfile.ZipFile(file) as input_zip:
+                with zipfile.ZipFile(zip_file) as input_zip:
                     for item in input_zip.infolist():
                         # Skip directories and hidden/OS files
                         if item.is_dir() or item.filename.startswith('__MACOSX') or item.filename.startswith('.'):
@@ -72,7 +86,7 @@ def process_files():
     # Standard processing for Excel files (returns JSON)
     results = []
     
-    for file in files:
+    for file in files_list:
         if not file.filename:
             continue
             
