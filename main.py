@@ -1,6 +1,8 @@
 # Import necessary tools
 import os
 import argparse
+import base64
+import io
 import matplotlib.pyplot as plt
 import pandas as pd
 from prettytable import PrettyTable
@@ -20,32 +22,43 @@ ROTODEX_NUM_CAMPOINTS = 180
 ROTODEX_FINAL_CAMPOINT = 1
 TRUNCATE_POINTS = 6
 
-#Set the precision for Decimal operations
+# Set the precision for Decimal operations
 getcontext().prec = TRUNCATE_POINTS + 1
 
-def create_ascii_table(input_dictionary, table):
-    """Create an ascii table from the derived data"""
-    for list in input_dictionary:
-        table.add_column(list.title(), input_dictionary[list])
+def create_ascii_table(input_dictionary):
+    """Create an ascii table from the derived data and return as string"""
+    table = PrettyTable()
+    columns = [POSITION_COLUMN[0], DEGREES_COLUMN[0], CAMPOINTS_COLUMN]
+    # Map dictionary keys to standard column names if they differ
+    for key in input_dictionary:
+        title = key.title().replace('\n', ' ')
+        table.add_column(title, input_dictionary[key])
     table.align = "l"
+    return table
 
-
-def create_graph(cef, x_list, y_list):
-    """Create graph using pyplot"""
+def create_graph(cef, x_list, y_list, headless=False):
+    """Create graph using pyplot. Returns base64 string if headless."""
+    plt.figure(figsize=(10, 6))
     plt.plot(x_list, y_list)
     plt.title(cef.base_filename)
-    plt.xlabel(POSITION_COLUMN[cef.position_index_found].title())
-    plt.ylabel(DEGREES_COLUMN[cef.degrees_index_found].title())
-    plt.get_current_fig_manager().set_window_title(cef.figure_title + " Motion Profile")
-    plt.show()
-
-
-def remove_null_from_dataframe(pandas_list):
-    """Remove null values from list extracted via pandas library"""
-    # Loop through the original and make changes to the new list
-    clean_list = [items for items in pandas_list if pd.notna(items)]
-    return clean_list
-
+    plt.xlabel(POSITION_COLUMN[cef.position_index_found].title().replace('\n', ' '))
+    plt.ylabel(DEGREES_COLUMN[cef.degrees_index_found].title().replace('\n', ' '))
+    
+    if headless:
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        plt.close()
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode('utf-8')
+        return img_base64
+    else:
+        try:
+            plt.get_current_fig_manager().set_window_title(cef.figure_title + " Motion Profile")
+            plt.show()
+        except Exception:
+            # Fallback if GUI fails
+            plt.close()
+    return None
 
 def panda_manipulation(cef):
     """Use the pandas library to retrieve the degrees column and create a list"""
@@ -55,16 +68,16 @@ def panda_manipulation(cef):
     degrees_list = clean_df[DEGREES_COLUMN[cef.degrees_index_found]].tolist()
 
     # Check if it's a rotodex cam
-    if len(position_list) <= EXPECTED_ROTODEX_LIST_LENGTH:
-        cef.is_rotodex_cam = True
+    is_rotodex_cam = len(position_list) <= EXPECTED_ROTODEX_LIST_LENGTH
+    cef.is_rotodex_cam = is_rotodex_cam
 
     # Check if the list ends at 355 or 360 for regular cams, or 175 or 180 for rotodex cams
-    if not cef.is_rotodex_cam:
+    if not is_rotodex_cam:
         num_campoints = REGULAR_NUM_CAMPOINTS
         final_degrees_position = REGULAR_FINAL_CAMPOINT
     else:
         num_campoints = ROTODEX_NUM_CAMPOINTS
-        final_degrees_position = ROTODEX_NUM_CAMPOINTS
+        final_degrees_position = ROTODEX_FINAL_CAMPOINT
 
     if position_list[-1] != num_campoints:
         position_list.append(num_campoints)
@@ -72,7 +85,7 @@ def panda_manipulation(cef):
 
     # Create campoints list by dividing by the num campoints if the item isn't null
     precision_str = '0.' + '0' * TRUNCATE_POINTS
-    campoints_list = [Decimal(index / num_campoints).quantize(Decimal(precision_str)) for index in degrees_list if
+    campoints_list = [Decimal(float(index) / num_campoints).quantize(Decimal(precision_str)) for index in degrees_list if
                       pd.notna(index)]
 
     # Create dictionary
@@ -83,50 +96,53 @@ def panda_manipulation(cef):
     }
     return cef_dictionary
 
-
-def export_xlsx():
-    """Exports an XLSX version of the original file"""
-    # Specify the output filename and path
-    xlsx_filename = cef.filename_without_extension + ".xlsx"
-    # Create the XLSX writer
-    xlsx_writer = pd.ExcelWriter(xlsx_filename, engine="xlsxwriter")
+def export_xlsx(cef, cef_dict, output_path=None):
+    """Exports an XLSX version of the data"""
+    xlsx_filename = output_path or (cef.filename_without_extension + ".xlsx")
     df = pd.DataFrame(cef_dict)
-    df.to_excel(xlsx_writer, sheet_name="Values", index=False)
-    xlsx_writer.save()
+    df.to_excel(xlsx_filename, index=False)
+    return xlsx_filename
 
-
-def export_csv(cef, csv_campoints_list):
+def export_csv(cef, csv_campoints_list, output_path=None):
     """Use the pandas library to export the campoints to CSV"""
-    # Pandas dataframe to export CSV
     df = pd.DataFrame(csv_campoints_list, columns=[CSV_HEADER])
-    df.to_csv(cef.csv_export_filename, index=False)
+    filename = output_path or cef.csv_export_filename
+    df.to_csv(filename, index=False)
+    return filename
 
-
-def process_single_file(cef, show_graph=True, show_table=True):
-    """Process a single Excel file and export CSV. Returns True on success."""
-    if not cef.is_valid_data():
-        return False
+def process_single_file(cef, show_graph=True, show_table=True, headless=False):
+    """Process a single Excel file. Returns results dict on success, None on failure."""
+    if not cef.is_valid_data(verbose=not headless):
+        return None
 
     cef_dict = panda_manipulation(cef)
+    
+    # Export files if not headless (CLI/GUI mode)
+    if not headless:
+        export_csv(cef, cef_dict[CAMPOINTS_COLUMN])
+        export_xlsx(cef, cef_dict)
 
-    br_campoints = cef_dict[CAMPOINTS_COLUMN].copy()
-
-    export_csv(cef, br_campoints)
-
+    ascii_table = None
     if show_table:
-        cef_table = PrettyTable()
-        create_ascii_table(cef_dict, cef_table)
-        print(cef_table)
+        ascii_table = create_ascii_table(cef_dict)
+        if not headless:
+            print(ascii_table)
 
-    if show_graph:
-        create_graph(
+    graph_data = None
+    if show_graph or headless:
+        graph_data = create_graph(
             cef,
             x_list=cef_dict[POSITION_COLUMN[cef.position_index_found]],
             y_list=cef_dict[DEGREES_COLUMN[cef.degrees_index_found]],
+            headless=headless
         )
 
-    return True
-
+    return {
+        'data': cef_dict,
+        'table': str(ascii_table) if ascii_table else None,
+        'graph_base64': graph_data,
+        'filename': cef.base_filename
+    }
 
 def find_excel_files(folder_path):
     """Recursively find all .xlsx/.xls files under folder_path, skipping temp files."""
@@ -138,7 +154,6 @@ def find_excel_files(folder_path):
             if filename.lower().endswith((".xlsx", ".xls")):
                 excel_files.append(os.path.join(root, filename))
     return excel_files
-
 
 def process_batch(folder_path):
     """Process all Excel files in a folder tree."""
@@ -162,8 +177,8 @@ def process_batch(folder_path):
         rel_path = os.path.relpath(filepath, folder_path)
         try:
             cef = CampointsExcelFile(file_path=filepath)
-            ok = process_single_file(cef, show_graph=False, show_table=False)
-            if ok:
+            result = process_single_file(cef, show_graph=False, show_table=False)
+            if result:
                 print(f"  {GREEN_TERMINAL_TEXT}OK{DEFAULT_TERMINAL_TEXT}      {rel_path}")
                 succeeded += 1
             else:
@@ -175,7 +190,6 @@ def process_batch(folder_path):
 
     print(f"\nSummary: {len(excel_files)} total, {succeeded} succeeded, {skipped} skipped, {failed} failed")
 
-
 def main():
     parser = argparse.ArgumentParser(description="Extract cam motion profile data from Excel files.")
     parser.add_argument("-f", "--folder", type=str, help="Batch process all Excel files in the given folder (recursive).")
@@ -184,9 +198,11 @@ def main():
     if args.folder:
         process_batch(args.folder)
     else:
-        cef = CampointsExcelFile()
-        process_single_file(cef)
-
+        try:
+            cef = CampointsExcelFile()
+            process_single_file(cef)
+        except Exception as e:
+            print(f"{RED_TERMINAL_TEXT}Error:{DEFAULT_TERMINAL_TEXT} {e}")
 
 if __name__ == "__main__":
     main()
