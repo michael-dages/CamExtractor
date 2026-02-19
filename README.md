@@ -1,119 +1,50 @@
-# Cam Extractor
+# CamExtractor
 
-A Python tool that extracts cam motion profile data from Excel files and generates CAMPOINTS data for industrial cam motion systems. The tool processes position and degrees data to calculate normalized cam points, exports results to CSV/XLSX formats, and visualizes the motion profile.
+**CamExtractor** is a modern web application for processing industrial cam motion profile data. It extracts position and degrees data from Excel files, calculates normalized "CAMPOINTS" with high precision, and exports results to CSV and XLSX formats.
 
 ## Features
 
-- **Interactive file selection** via GUI dialog (tkinter)
-- **Multi-sheet scanning** to find valid data in any sheet
-- **Dual cam type support**:
-  - Regular Cam (360 campoints)
-  - Rotodex Cam (180 campoints)
-- **High-precision calculations** using Python's Decimal module
-- **Multiple output formats**: CSV, XLSX, ASCII table, and interactive graph
-- **Flexible column detection** supporting multiple naming conventions
-- **Batch processing** support for entire folders via command line
+- **Web Interface**: User-friendly React frontend with drag-and-drop upload.
+- **Batch Processing**: Upload a `.zip` archive to process multiple files at once.
+- **Visual Validation**: Interactive graphs and data tables to verify profile integrity.
+- **Export Options**: Toggle CSV and XLSX output formats.
+- **Dockerized**: Easy deployment via Docker Compose.
 
-## Prerequisites
+## Quick Start (Docker)
 
-- Python 3.x
-- pandas
-- openpyxl
-- prettytable
-- matplotlib
-- xlrd
+The recommended way to run CamExtractor is using Docker.
 
-Install all dependencies:
+```bash
+docker compose up -d
+```
+
+Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+## Development
+
+To run the application locally for development:
+
+```bash
+# Start dev environment (hot-reloading)
+docker compose -f docker-compose.dev.yml up --build
+```
+
+### Architecture
+- **Frontend**: React + Vite (Port 5173 in dev)
+- **Backend**: Python Flask (Port 5000)
+
+## Legacy Usage (CLI)
+
+You can still use the underlying Python script directly if you prefer the command line or `tkinter` GUI:
+
 ```bash
 pip install -r requirements.txt
-```
-
-## Usage
-
-### Running the Application
-
-```bash
 python main.py
 ```
+*Note: This requires a local Python environment and display support for the file dialog.*
 
-Arguments:
-- `-f`, `--folder`: Batch process all Excel files in the given folder (recursive).
+## Cam Logic
 
-**Interactive Mode:**
-Run without arguments to open the file picker dialog:
-```bash
-python main.py
-```
-
-A file picker dialog will open. Select an Excel file (.xls or .xlsx) containing your cam data.
-
-**Batch Mode:**
-Process all Excel files in a directory:
-```bash
-python main.py -f "C:/path/to/cam/files"
-```
-
-### Building Executable
-
-Create a standalone executable using PyInstaller:
-```bash
-pyinstaller main.spec
-```
-
-The executable will be generated in the `dist/` directory.
-
-## Input File Requirements
-
-Excel files must contain columns with one of these naming patterns:
-- `POSITION` and `DEGREES`, or
-- `Cycle\n Position` and `Axis\n Position`
-
-The tool automatically scans all sheets in the workbook to find valid data.
-
-## Output Files
-
-- **CSV**: `<original_filename>.csv` - Contains CAMPOINTS column with header `% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1`
-- **XLSX**: `<original_filename>.xlsx` - Full table with Position, Degrees, and CAMPOINTS columns
-- **Console**: ASCII table displaying all three columns
-- **Graph**: Interactive matplotlib window showing the motion profile
-
-## Architecture
-
-### Two-Module Design
-
-**main.py** - Main execution script that orchestrates:
-- Data extraction and validation
-- Cam point calculations using Decimal precision
-- CSV/XLSX export generation
-- ASCII table display
-- Motion profile visualization
-
-**campoints_excel_file.py** - Excel file handling class that provides:
-- Interactive file selection dialog
-- Multi-sheet scanning for valid data
-- Column detection for position/degrees data
-
-### Cam Types
-
-**Regular Cam** (360 campoints):
-- Detected when data has >37 position entries
-- Final position normalized to 0
-
-**Rotodex Cam** (180 campoints):
-- Detected when data has ≤37 position entries
-- Final position normalized to 180
-
-### Calculation
-
-CAMPOINTS are calculated by normalizing degrees:
-```
-campoint = degrees / num_campoints
-```
-
-All calculations use 6 decimal places of precision.
-
-## Motion Profile
-![Motion Profile](graphics/graph.png)
-
-## Console Output
-![Pretty Table](graphics/pretty_table.png)
+- **Regular Cam** (360 points): Detected when data has >37 entries. Normalized to 360.
+- **Rotodex Cam** (180 points): Detected when data has ≤37 entries. Normalized to 180.
+- **Precision**: Calculations use 6 decimal places of precision suitable for industrial motion control.
