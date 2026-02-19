@@ -1,73 +1,55 @@
 # Cam Extractor - Project Context
 
 ## Project Overview
-**CamExtractor** is a Python-based utility designed for industrial automation applications. It extracts cam motion profile data from Excel files (`.xls`, `.xlsx`), processes it to generate normalized "CAMPOINTS," and exports the results to CSV and XLSX formats. It also provides visual validation via a generated motion profile graph (matplotlib) and a console-based ASCII table.
+**CamExtractor** is a modern web application for industrial automation. It processes cam motion profile data from Excel files (`.xls`, `.xlsx`), generating normalized "CAMPOINTS" for machine control. The application features a **React** frontend for easy file uploads and visualization, backed by a **Flask** API that handles the complex data processing.
 
 ## Key Functionality
-- **Input:** Excel files containing cam profile data (Position/Degrees).
-- **Processing:**
-    - Auto-detection of "Regular" (360 points) vs "Rotodex" (180 points) cam profiles based on data length.
-    - Normalization of degree values to a standard "campoint" metric.
-    - High-precision arithmetic using Python's `Decimal` module (truncated to 6 decimal places).
-- **Output:**
-    - **CSV:** Specialized format with header `% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1`.
-    - **XLSX:** Detailed table including Position, Degrees, and calculated Campoints.
-    - **Visualization:** Interactive Matplotlib graph of the motion profile.
-    - **Console:** ASCII summary table.
+- **Web Interface:** Drag-and-drop file upload, interactive motion profile graphs, and data preview tables.
+- **Batch Processing:** Upload a `.zip` archive containing multiple Excel files (including nested folders) to process them all at once. The system returns a single zip with all results.
+- **Export Options:** Toggle CSV and XLSX generation on/off.
+- **Core Processing:**
+    - Auto-detection of "Regular" (360 points) vs "Rotodex" (180 points) profiles.
+    - High-precision arithmetic using Python's `Decimal` module.
+    - Normalization of degree values to standard "campoints".
 
 ## Architecture
-The project consists of two primary Python modules:
+The project is containerized using Docker and consists of:
 
-1.  **`main.py` (Entry Point):**
-    - Orchestrates the application flow.
-    - Handles data cleaning (`remove_null_from_dataframe`), calculation (`panda_manipulation`), and export logic (`export_csv`, `export_xlsx`).
-    - Generates visualizations (`create_graph`, `create_ascii_table`).
-    - **Constants:**
-        - `REGULAR_NUM_CAMPOINTS = 360`
-        - `ROTODEX_NUM_CAMPOINTS = 180`
-        - `TRUNCATE_POINTS = 6` (Decimal precision)
+1.  **Frontend (`frontend/`)**:
+    - **Tech Stack:** React, Vite, Tailwind CSS.
+    - **Duties:** UI, File Uploads, Visualization (Graphs/Charts), API Communication.
 
-2.  **`campoints_excel_file.py`:**
-    - Defines the `CampointsExcelFile` class.
-    - Manages file I/O using `tkinter` (file dialog) and `pandas` (Excel reading).
-    - Scans all sheets in a workbook to locate valid data columns.
+2.  **Backend (`app.py`, `main.py`)**:
+    - **Tech Stack:** Python, Flask, Pandas, Matplotlib.
+    - **`app.py`**: Flask API endpoints (`/process`, `/health`) handling file uploads and responses.
+    - **`main.py`**: Core business logic. Validates data, calculates campoints, and generates export content.
+    - **`campoints_excel_file.py`**: Handles Excel parsing and column detection.
 
 ## Usage
 
-### Prerequisites
-- Python 3.x
-- **GUI Environment:** The application uses `tkinter` for file selection, requiring a display (or X11 forwarding).
+### Docker (Recommended)
+The easiest way to run the application is via Docker Compose.
 
-### Installation
 ```bash
-pip install -r requirements.txt
+# Start the application
+docker compose up -d
+
+# Open browser
+http://localhost:5000
 ```
 
-### Running the Application
+### Development
+For local development, you can run the backend and frontend separately or use the dev compose file:
 ```bash
-python main.py
+docker compose -f docker-compose.dev.yml up --build
 ```
-1.  A file dialog will open. Select your source Excel file.
-2.  The script will scan sheets for valid columns.
-3.  If valid, it generates outputs in the same directory as the source file and displays a graph.
 
 ## Input Data Specification
-The tool automatically scans for columns matching **either** of these naming conventions:
+The tool automatically scans Excel sheets for columns matching:
+- **Set 1:** `POSITION` and `DEGREES`
+- **Set 2:** `Cycle\n Position` and `Axis\n Position`
 
-**Set 1 (Standard):**
-- `POSITION`
-- `DEGREES`
-
-**Set 2 (Alternative):**
-- `Cycle\n Position`
-- `Axis\n Position`
-
-## Logic & Cam Types
-- **Rotodex Cam:** Detected if position list length <= 37. Normalized to 180 points.
+## Cam Logic
+- **Rotodex Cam:** Position list length <= 37. Normalized to 180 points.
 - **Regular Cam:** Default. Normalized to 360 points.
-- **Normalization Formula:** `campoint = degree_value / total_points` (calculated with Decimal precision).
-
-## Development Notes
-- **Precision:** The `decimal` module is used explicitly to avoid floating-point errors common in industrial profile calculations.
-- **Dependencies:** `pandas`, `openpyxl`, `prettytable`, `matplotlib`, `xlrd`.
-- **Environment:** Since `tkinter` is used, running this in a headless container (like Docker) requires specific setup for display handling.
+- **Formula:** `campoint = degree_value / total_points` (Decimal precision).
