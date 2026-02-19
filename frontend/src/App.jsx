@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Upload, FileSpreadsheet, Download, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_BASE = 'http://localhost:5000';
+const API_BASE = '';
 
 function App() {
   const [isUploading, setIsUploading] = useState(false);

@@ -5,10 +5,12 @@ import base64
 import pandas as pd
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_file, CAMPOINTS_COLUMN
 from campoints_excel_file import CampointsExcelFile
 
 app = Flask(__name__, static_folder='static')
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 CORS(app)
 
 # Wire up logging to Gunicorn if available
