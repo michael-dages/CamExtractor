@@ -1,0 +1,15 @@
+services:
+  camextractor:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+      # Mount source code for easier debugging/reloading (optional but helpful for dev)
+      # Note: Dockerfile copies . to /app, so we mount over it.
+      # Exclude frontend/node_modules if we were mounting root, but we are just mounting specific things or everything.
+      # For now, let's just stick to build: . for simplicity and rely on rebuilds.
+      # To enable hot reload, we'd need to mount . to /app and run flask with --debug
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
