@@ -18,10 +18,33 @@ function App() {
     }
 
     try {
+      // Use 'blob' to handle binary zip or json
       const response = await axios.post(`${API_BASE}/process`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        responseType: 'blob'
       });
-      setResults(prev => [...response.data.results, ...prev]);
+
+      const contentType = response.headers['content-type'];
+
+      if (contentType && contentType.includes('application/zip')) {
+        // Handle Zip Download
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'processed_cams.zip');
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode.removeChild(link);
+        alert("Batch processing complete! Zip file downloaded.");
+      } else {
+        // Handle JSON Response (Blob -> JSON)
+        const text = await response.data.text();
+        const json = JSON.parse(text);
+        if (json.results) {
+          setResults(prev => [...json.results, ...prev]);
+        }
+      }
+
     } catch (error) {
       console.error("Upload failed", error);
       alert("Error processing files. Make sure the backend is running.");
@@ -103,7 +126,7 @@ function App() {
             id="fileInput"
             type="file"
             multiple
-            accept=".xlsx,.xls"
+            accept=".xlsx,.xls,.zip"
             onChange={onFileSelect}
             className="hidden"
             style={{ display: 'none' }}
