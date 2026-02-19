@@ -10,6 +10,8 @@ services:
       # Exclude frontend/node_modules if we were mounting root, but we are just mounting specific things or everything.
       # For now, let's just stick to build: . for simplicity and rely on rebuilds.
       # To enable hot reload, we'd need to mount . to /app and run flask with --debug
+    command: flask run --host=0.0.0.0 --port=5000 --debug
     environment:
+      - FLASK_APP=app.py
       - FLASK_ENV=development
       - FLASK_DEBUG=1
