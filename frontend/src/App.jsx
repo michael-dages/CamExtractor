@@ -9,6 +9,8 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [results, setResults] = useState([]);
   const [dragActive, setDragActive] = useState(false);
+  const [exportCSV, setExportCSV] = useState(true);
+  const [exportXLSX, setExportXLSX] = useState(true);
 
   const processFiles = async (files) => {
     setIsUploading(true);
@@ -16,6 +18,10 @@ function App() {
     for (let i = 0; i < files.length; i++) {
       formData.append('files', files[i]);
     }
+
+    // Append export flags
+    formData.append('export_csv', exportCSV);
+    formData.append('export_excel', exportXLSX);
 
     try {
       // Use 'blob' to handle binary zip or json
@@ -114,6 +120,28 @@ function App() {
       </header>
 
       <main>
+        {/* Export Options */}
+        <div className="export-options flex justify-center gap-6 mb-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={exportCSV}
+              onChange={(e) => setExportCSV(e.target.checked)}
+              className="checkbox"
+            />
+            <span>Export CSV</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={exportXLSX}
+              onChange={(e) => setExportXLSX(e.target.checked)}
+              className="checkbox"
+            />
+            <span>Export XLSX</span>
+          </label>
+        </div>
+
         <div
           className={`upload-zone ${dragActive ? 'active' : ''}`}
           onDragEnter={handleDrag}

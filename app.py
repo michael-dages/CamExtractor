@@ -41,6 +41,11 @@ def process_files():
     if not files_list:
         return jsonify({"error": "No files provided"}), 400
 
+    # Retrieve export flags (default to true if not provided)
+    # Frontend sends 'true'/'false' strings
+    export_csv = request.form.get('export_csv', 'true').lower() == 'true'
+    export_excel = request.form.get('export_excel', 'true').lower() == 'true'
+
     # Relaxed detection: Check if the first file is a zip, ignoring length check
     # taking into account some browsers might send empty fields or multiple files where one is the zip
     is_zip = False
@@ -71,7 +76,7 @@ def process_files():
                                 file_stream = io.BytesIO(file_bytes)
                                 
                                 # Process
-                                process_and_add_to_zip(file_stream, item.filename, output_zip)
+                                process_and_add_to_zip(file_stream, item.filename, output_zip, export_csv, export_excel)
             except zipfile.BadZipFile:
                  return jsonify({"error": "Invalid zip file"}), 400
 
@@ -105,28 +110,30 @@ def process_files():
             result = process_single_file(cef, show_graph=True, show_table=True, headless=True)
             
             if result:
-                # Create CSV string
-                CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
-                df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
-                csv_content = df_csv.to_csv(index=False)
-                
-                # Create XLSX bytes (base64 for JSON transport)
-                xlsx_buf = io.BytesIO()
-                df_xlsx = pd.DataFrame(result['data'])
-                df_xlsx.to_excel(xlsx_buf, index=False)
-                xlsx_buf.seek(0)
-                xlsx_base64 = base64.b64encode(xlsx_buf.read()).decode('utf-8')
-
-                # Add to results list for the UI
-                results.append({
+                response_item = {
                     "filename": file.filename,
                     "success": True,
                     "table": result['table'],
                     "graph": result['graph_base64'],
-                    "csv": csv_content,
-                    "xlsx": xlsx_base64,
                     "campoints": [str(c) for c in result['data'][CAMPOINTS_COLUMN]]
-                })
+                }
+
+                if export_csv:
+                    # Create CSV string
+                    CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
+                    df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
+                    response_item["csv"] = df_csv.to_csv(index=False)
+                
+                if export_excel:
+                    # Create XLSX bytes (base64 for JSON transport)
+                    xlsx_buf = io.BytesIO()
+                    df_xlsx = pd.DataFrame(result['data'])
+                    df_xlsx.to_excel(xlsx_buf, index=False)
+                    xlsx_buf.seek(0)
+                    response_item["xlsx"] = base64.b64encode(xlsx_buf.read()).decode('utf-8')
+
+                # Add to results list for the UI
+                results.append(response_item)
             else:
                 results.append({
                     "filename": file.filename,
@@ -142,7 +149,7 @@ def process_files():
 
     return jsonify({"results": results})
 
-def process_and_add_to_zip(file_stream, original_filename, output_zip):
+def process_and_add_to_zip(file_stream, original_filename, output_zip, export_csv=True, export_excel=True):
     try:
         # Create handler
         cef = CampointsExcelFile(file_stream=file_stream, original_filename=original_filename)
@@ -154,17 +161,19 @@ def process_and_add_to_zip(file_stream, original_filename, output_zip):
             # Prepare base filename (strip extension)
             base_name = os.path.splitext(original_filename)[0]
             
-            # 1. Add CSV
-            CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
-            df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
-            csv_content = df_csv.to_csv(index=False)
-            output_zip.writestr(f"{base_name}.csv", csv_content)
+            if export_csv:
+                # 1. Add CSV
+                CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
+                df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
+                csv_content = df_csv.to_csv(index=False)
+                output_zip.writestr(f"{base_name}.csv", csv_content)
             
-            # 2. Add XLSX
-            xlsx_buf = io.BytesIO()
-            df_xlsx = pd.DataFrame(result['data'])
-            df_xlsx.to_excel(xlsx_buf, index=False)
-            output_zip.writestr(f"{base_name}_processed.xlsx", xlsx_buf.getvalue())
+            if export_excel:
+                # 2. Add XLSX
+                xlsx_buf = io.BytesIO()
+                df_xlsx = pd.DataFrame(result['data'])
+                df_xlsx.to_excel(xlsx_buf, index=False)
+                output_zip.writestr(f"{base_name}_processed.xlsx", xlsx_buf.getvalue())
             
     except Exception as e:
         print(f"Failed to process {original_filename}: {e}")
