@@ -14,7 +14,7 @@ function App() {
     setIsUploading(true);
     const formData = new FormData();
     for (let i = 0; i < files.length; i++) {
-        formData.append('files', files[i]);
+      formData.append('files', files[i]);
     }
 
     try {
@@ -55,10 +55,33 @@ function App() {
     }
   };
 
+  const downloadFile = (content, filename, type) => {
+    let blob;
+    if (type === 'xlsx') {
+      const byteCharacters = atob(content);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    } else {
+      blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="app-container">
       <header>
-        <motion.h1 
+        <motion.h1
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -68,7 +91,7 @@ function App() {
       </header>
 
       <main>
-        <div 
+        <div
           className={`upload-zone ${dragActive ? 'active' : ''}`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -76,19 +99,19 @@ function App() {
           onDrop={handleDrop}
           onClick={() => document.getElementById('fileInput').click()}
         >
-          <input 
+          <input
             id="fileInput"
-            type="file" 
-            multiple 
-            accept=".xlsx,.xls" 
+            type="file"
+            multiple
+            accept=".xlsx,.xls"
             onChange={onFileSelect}
-            className="hidden" 
+            className="hidden"
             style={{ display: 'none' }}
           />
-          
+
           <AnimatePresence mode="wait">
             {isUploading ? (
-              <motion.div 
+              <motion.div
                 key="loading"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -99,7 +122,7 @@ function App() {
                 <p>Normalizing campoints and generating profiles</p>
               </motion.div>
             ) : (
-              <motion.div 
+              <motion.div
                 key="idle"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -115,7 +138,7 @@ function App() {
         <div className="results-grid">
           <AnimatePresence>
             {results.map((res, idx) => (
-              <motion.div 
+              <motion.div
                 key={`${res.filename}-${idx}`}
                 className="result-card"
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -135,18 +158,24 @@ function App() {
                 {res.success ? (
                   <>
                     <div className="graph-container">
-                      <img 
-                        src={`data:image/png;base64,${res.graph}`} 
-                        alt="Motion Profile" 
+                      <img
+                        src={`data:image/png;base64,${res.graph}`}
+                        alt="Motion Profile"
                         className="graph-img"
                       />
                     </div>
-                    
+
                     <div className="flex gap-2 mb-4">
-                      <button className="button flex-1 text-sm py-2">
+                      <button
+                        className="button flex-1 text-sm py-2"
+                        onClick={() => downloadFile(res.csv, `${res.filename.split('.')[0]}.csv`, 'csv')}
+                      >
                         <Download size={16} className="inline mr-2" /> CSV
                       </button>
-                      <button className="button flex-1 text-sm py-2">
+                      <button
+                        className="button flex-1 text-sm py-2"
+                        onClick={() => downloadFile(res.xlsx, `${res.filename.split('.')[0]}.xlsx`, 'xlsx')}
+                      >
                         <Download size={16} className="inline mr-2" /> XLSX
                       </button>
                     </div>

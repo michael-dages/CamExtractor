@@ -1,6 +1,8 @@
 import os
 import io
 import zipfile
+import base64
+import pandas as pd
 from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from main import process_single_file, export_csv, export_xlsx, CAMPOINTS_COLUMN
@@ -52,38 +54,28 @@ def process_files():
             result = process_single_file(cef, show_graph=True, show_table=True, headless=True)
             
             if result:
+                # Create CSV string
+                CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
+                df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
+                csv_content = df_csv.to_csv(index=False)
+                
+                # Create XLSX bytes (base64 for JSON transport)
+                xlsx_buf = io.BytesIO()
+                df_xlsx = pd.DataFrame(result['data'])
+                df_xlsx.to_excel(xlsx_buf, index=False)
+                xlsx_buf.seek(0)
+                xlsx_base64 = base64.b64encode(xlsx_buf.read()).decode('utf-8')
+
                 # Add to results list for the UI
                 results.append({
                     "filename": file.filename,
                     "success": True,
                     "table": result['table'],
                     "graph": result['graph_base64'],
+                    "csv": csv_content,
+                    "xlsx": xlsx_base64,
                     "campoints": [str(c) for c in result['data'][CAMPOINTS_COLUMN]]
                 })
-                
-                # Generate CSV and XLSX in memory for downloading
-                csv_stream = io.StringIO()
-                # We need to handle the fact that export_csv usually writes to disk.
-                # Since we refactored it to take a path, we can't easily pass a StringIO 
-                # without more refactoring. For now, we'll write to a temp file or refactor.
-                # Let's do a quick temp-file approach for simplicity in this prototype.
-                
-                # Actually, let's just use the dataframe from result['data'] directly here.
-                import pandas as pd
-                
-                # Create CSV bytes
-                CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
-                df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
-                csv_bytes = df_csv.to_csv(index=False).encode('utf-8')
-                processed_files_memory.append((f"{os.path.splitext(file.filename)[0]}.csv", csv_bytes))
-                
-                # Create XLSX bytes
-                xlsx_buf = io.BytesIO()
-                df_xlsx = pd.DataFrame(result['data'])
-                df_xlsx.to_excel(xlsx_buf, index=False)
-                xlsx_buf.seek(0)
-                processed_files_memory.append((f"{os.path.splitext(file.filename)[0]}.xlsx", xlsx_buf.read()))
-                
             else:
                 results.append({
                     "filename": file.filename,
