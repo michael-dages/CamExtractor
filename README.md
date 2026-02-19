@@ -12,6 +12,7 @@ A Python tool that extracts cam motion profile data from Excel files and generat
 - **High-precision calculations** using Python's Decimal module
 - **Multiple output formats**: CSV, XLSX, ASCII table, and interactive graph
 - **Flexible column detection** supporting multiple naming conventions
+- **Batch processing** support for entire folders via command line
 
 ## Prerequisites
 
@@ -35,7 +36,22 @@ pip install -r requirements.txt
 python main.py
 ```
 
+Arguments:
+- `-f`, `--folder`: Batch process all Excel files in the given folder (recursive).
+
+**Interactive Mode:**
+Run without arguments to open the file picker dialog:
+```bash
+python main.py
+```
+
 A file picker dialog will open. Select an Excel file (.xls or .xlsx) containing your cam data.
+
+**Batch Mode:**
+Process all Excel files in a directory:
+```bash
+python main.py -f "C:/path/to/cam/files"
+```
 
 ### Building Executable
 
@@ -101,4 +117,3 @@ All calculations use 6 decimal places of precision.
 
 ## Console Output
 ![Pretty Table](graphics/pretty_table.png)
-
