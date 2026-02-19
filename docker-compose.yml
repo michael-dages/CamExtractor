@@ -1,6 +1,6 @@
 services:
   camextractor:
-    build: .
+    image: ghcr.io/michael-dages/camextractor:web-ui-migration
     ports:
       - "5000:5000"
     volumes:
