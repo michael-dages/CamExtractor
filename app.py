@@ -8,6 +8,7 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 from main import process_single_file, CAMPOINTS_COLUMN
 from campoints_excel_file import CampointsExcelFile
+import cam_xml
 
 app = Flask(__name__, static_folder='static')
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -47,6 +48,7 @@ def process_files():
     # Frontend sends 'true'/'false' strings
     export_csv = request.form.get('export_csv', 'true').lower() == 'true'
     export_excel = request.form.get('export_excel', 'true').lower() == 'true'
+    export_xml = request.form.get('export_xml', 'false').lower() == 'true'
 
     # Relaxed detection: Check if the first file is a zip, ignoring length check
     # taking into account some browsers might send empty fields or multiple files where one is the zip
@@ -78,7 +80,7 @@ def process_files():
                                 file_stream = io.BytesIO(file_bytes)
                                 
                                 # Process
-                                process_and_add_to_zip(file_stream, item.filename, output_zip, export_csv, export_excel)
+                                process_and_add_to_zip(file_stream, item.filename, output_zip, export_csv, export_excel, export_xml)
             except zipfile.BadZipFile:
                  return jsonify({"error": "Invalid zip file"}), 400
 
@@ -112,12 +114,18 @@ def process_files():
             result = process_single_file(cef, show_graph=True, show_table=True, headless=True)
             
             if result:
+                axis = result.get('axis')
                 response_item = {
                     "filename": file.filename,
                     "success": True,
                     "table": result['table'],
                     "graph": result['graph_base64'],
-                    "campoints": [str(c) for c in result['data'][CAMPOINTS_COLUMN]]
+                    "campoints": [str(c) for c in result['data'][CAMPOINTS_COLUMN]],
+                    "points": result.get('points'),
+                    "axis": axis,
+                    "is_capping": bool(axis and axis.get('is_capping')),
+                    "axis_names": cam_xml.AXIS_NAMES,
+                    "capping_axes": sorted(cam_xml.REJECT_AXES)
                 }
 
                 if export_csv:
@@ -151,32 +159,110 @@ def process_files():
 
     return jsonify({"results": results})
 
-def process_and_add_to_zip(file_stream, original_filename, output_zip, export_csv=True, export_excel=True):
+@app.route('/export_xml', methods=['POST'])
+def export_xml_endpoint():
+    """
+    Build a CamProfile.xsd XML file on demand from point arrays + metadata.
+
+    Invoked after the user confirms axis metadata and (for capping axes) picks the
+    reject point on the interactive chart. Expects JSON:
+      { prefix, index, hmitext, axis_name, axis_number, master[], slave[], reject_position? }
+    Returns the XML as a file download named <prefix><index>.xml.
+    """
+    payload = request.get_json(silent=True)
+    if not payload:
+        return jsonify({"error": "No JSON payload provided"}), 400
+
+    master = payload.get('master')
+    slave = payload.get('slave')
+    if not isinstance(master, list) or not isinstance(slave, list):
+        return jsonify({"error": "master and slave point arrays are required"}), 400
+
+    axis_name = payload.get('axis_name')
+    reject_position = payload.get('reject_position')
+    # Reject only applies to capping axes; ignore it otherwise.
+    if reject_position is not None and not cam_xml.is_capping_axis(axis_name):
+        reject_position = None
+
+    axis_number = payload.get('axis_number')
+    if axis_number in ('', None):
+        axis_number = 0
+
+    try:
+        xml_content = cam_xml.generate_xml(
+            prefix=payload.get('prefix') or '',
+            index=str(payload.get('index') or ''),
+            hmitext=payload.get('hmitext') or '',
+            axis_name=axis_name,
+            axis_number=int(axis_number),
+            master=[float(m) for m in master],
+            slave=[float(s) for s in slave],
+            reject_position=float(reject_position) if reject_position is not None else None,
+            source_filename=payload.get('source_filename'),
+        )
+    except (ValueError, TypeError) as e:
+        return jsonify({"error": str(e)}), 400
+
+    prefix = payload.get('prefix') or ''
+    index = str(payload.get('index') or '')
+    download_name = f"{prefix}{index}.xml" if (prefix and index) else "cam_profile.xml"
+
+    buf = io.BytesIO(xml_content.encode('utf-8'))
+    buf.seek(0)
+    return send_file(
+        buf,
+        mimetype='application/xml',
+        as_attachment=True,
+        download_name=download_name
+    )
+
+def process_and_add_to_zip(file_stream, original_filename, output_zip, export_csv=True, export_excel=True, export_xml=False):
     try:
         # Create handler
         cef = CampointsExcelFile(file_stream=file_stream, original_filename=original_filename)
-        
+
         # Process headlessly
         result = process_single_file(cef, show_graph=False, show_table=False, headless=True)
-        
+
         if result:
             # Prepare base filename (strip extension)
             base_name = os.path.splitext(original_filename)[0]
-            
+
             if export_csv:
                 # 1. Add CSV
                 CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
                 df_csv = pd.DataFrame(result['data'][CAMPOINTS_COLUMN], columns=[CSV_HEADER])
                 csv_content = df_csv.to_csv(index=False)
                 output_zip.writestr(f"{base_name}.csv", csv_content)
-            
+
             if export_excel:
                 # 2. Add XLSX
                 xlsx_buf = io.BytesIO()
                 df_xlsx = pd.DataFrame(result['data'])
                 df_xlsx.to_excel(xlsx_buf, index=False)
                 output_zip.writestr(f"{base_name}_processed.xlsx", xlsx_buf.getvalue())
-            
+
+            # 3. Add XML (only when the filename matches the cam-naming convention).
+            # Batch mode has no interactive reject-point selection, so RejectPosition is omitted.
+            axis = result.get('axis')
+            points = result.get('points')
+            if export_xml and axis and points:
+                try:
+                    xml_content = cam_xml.generate_xml(
+                        prefix=axis.get('prefix'),
+                        index=axis.get('index'),
+                        hmitext=axis.get('hmitext'),
+                        axis_name=axis.get('axis_name'),
+                        axis_number=axis.get('axis_number'),
+                        master=points['master'],
+                        slave=points['slave'],
+                        reject_position=None,
+                        source_filename=original_filename,
+                    )
+                    output_zip.writestr(f"{axis['prefix']}{axis['index']}.xml", xml_content)
+                except Exception as xe:
+                    print(f"Failed to build XML for {original_filename}: {xe}")
+
     except Exception as e:
         print(f"Failed to process {original_filename}: {e}")
 

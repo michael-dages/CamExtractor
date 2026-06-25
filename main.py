@@ -11,6 +11,7 @@ from campoints_excel_file import (
     CampointsExcelFile, DEGREES_COLUMN, POSITION_COLUMN,
     RED_TERMINAL_TEXT, GREEN_TERMINAL_TEXT, DEFAULT_TERMINAL_TEXT,
 )
+import cam_xml
 
 # Declare global constants
 CSV_HEADER = '% MA_PERIODE=1 SL_PERIODE=1 CYCLIC=1'
@@ -137,11 +138,21 @@ def process_single_file(cef, show_graph=True, show_table=True, headless=False):
             headless=headless
         )
 
+    # Point arrays for XML cam export: master = POSITION column, slave = raw DEGREES column.
+    position_key = POSITION_COLUMN[cef.position_index_found]
+    degrees_key = DEGREES_COLUMN[cef.degrees_index_found]
+    points = {
+        'master': [float(p) for p in cef_dict[position_key]],
+        'slave': [float(s) for s in cef_dict[degrees_key]],
+    }
+
     return {
         'data': cef_dict,
         'table': str(ascii_table) if ascii_table else None,
         'graph_base64': graph_data,
-        'filename': cef.base_filename
+        'filename': cef.base_filename,
+        'points': points,
+        'axis': cam_xml.parse_filename(cef.base_filename),
     }
 
 def find_excel_files(folder_path):
